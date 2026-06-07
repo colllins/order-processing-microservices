@@ -1,23 +1,17 @@
-# Maven / build
 target/
 *.jar
 *.war
 *.ear
 
-# IntelliJ
 .idea/
 *.iml
 
-# VS Code
 .vscode/
 
-# Logs
 *.log
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Env/secrets
 .env
 application-local.properties
+
+.DS_Store
+Thumbs.db
