@@ -1,0 +1,30 @@
+# Order Processing Microservices V1
+
+Event-driven backend system built with Java, Spring Boot, RabbitMQ, MySQL, and Docker Compose.
+
+## Services
+
+- order-service
+- payment-service
+- notification-service
+
+## Features
+
+- Create orders
+- Publish OrderCreatedEvent
+- Process payments with randomized SUCCESS or FAILED result
+- Publish PaymentCompletedEvent
+- Update order status to CONFIRMED or PAYMENT_FAILED
+- Generate custom notifications based on payment result
+- Separate MySQL database per service
+- Shared RabbitMQ broker
+- Docker Compose setup for local development
+
+## Tech Stack
+
+Java 21, Spring Boot, Spring Data JPA, MySQL, RabbitMQ, Docker Compose, Maven
+
+## Run Locally
+
+```bash
+docker compose up --build
