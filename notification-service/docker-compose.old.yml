@@ -1,0 +1,21 @@
+services:
+  notification-db:
+    image: mysql:9.6
+    container_name: notification-db
+    environment:
+      MYSQL_ROOT_PASSWORD: Thisismanmad1@
+      MYSQL_DATABASE: notification_service_db
+    ports:
+      - "3310:3306"
+
+  order-service:
+    build: .
+    container_name: notification-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - notification-db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://notification-db:3306/notification_service_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: Thisismanmad1@
