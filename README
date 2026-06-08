@@ -1,6 +1,19 @@
 # Order Processing Microservices V1
 
-Event-driven backend system built with Java, Spring Boot, RabbitMQ, MySQL, and Docker Compose.
+Order Processing Microservices V1 is an event-driven backend system built with Java and Spring Boot. It handles order creation, payment processing, order status updates, and customer notifications using separate microservices.
+
+The project uses RabbitMQ messaging for asynchronous service communication and Docker Compose to run all services, databases, and the message broker locally.
+
+## Tech Stack
+
+- Java 21
+- Spring Boot
+- Spring Data JPA
+- MySQL
+- RabbitMQ
+- Docker Compose
+- Maven
+- REST APIs
 
 ## Services
 
@@ -10,21 +23,167 @@ Event-driven backend system built with Java, Spring Boot, RabbitMQ, MySQL, and D
 
 ## Features
 
-- Create orders
-- Publish OrderCreatedEvent
-- Process payments with randomized SUCCESS or FAILED result
-- Publish PaymentCompletedEvent
-- Update order status to CONFIRMED or PAYMENT_FAILED
-- Generate custom notifications based on payment result
+- Order creation and order lookup
+- Payment processing with randomized SUCCESS or FAILED outcomes
+- Order status updates based on payment result
+- Custom notification generation based on payment success or failure
+- RabbitMQ messaging for event-driven communication
 - Separate MySQL database per service
-- Shared RabbitMQ broker
-- Docker Compose setup for local development
+- Shared RabbitMQ message broker
+- Docker Compose setup for running the full system locally
+- RESTful API structure using controllers, services, repositories, DTOs, and entities
 
-## Tech Stack
+## Event-Driven Flow
 
-Java 21, Spring Boot, Spring Data JPA, MySQL, RabbitMQ, Docker Compose, Maven
+The system uses RabbitMQ events to coordinate communication between services.
 
-## Run Locally
+```text
+Create Order
+→ OrderCreatedEvent published
+→ payment-service consumes the event
+→ payment-service creates payment with SUCCESS or FAILED status
+→ PaymentCompletedEvent published
+→ order-service consumes payment event
+→ order status updates to CONFIRMED or PAYMENT_FAILED
+→ notification-service consumes payment event
+→ custom notification is created
+```
 
-```bash
-docker compose up --build
+## Project Highlight
+
+**Event-Driven Microservices | Java, Spring Boot, RabbitMQ, MySQL, Docker Compose**
+
+- Built separate order, payment, and notification microservices with independent databases.
+- Implemented RabbitMQ messaging to trigger payment processing, update order statuses, and generate customized notifications.
+- Containerized the full system with Docker Compose using MySQL databases and a shared RabbitMQ broker.
+
+## Project Structure
+
+```text
+microservice-app
+├── docker-compose.yml
+├── order-service
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── entity
+│   ├── dto
+│   ├── event
+│   ├── publisher
+│   ├── consumer
+│   └── config
+├── payment-service
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── entity
+│   ├── dto
+│   ├── event
+│   ├── publisher
+│   ├── consumer
+│   └── config
+└── notification-service
+    ├── controller
+    ├── service
+    ├── repository
+    ├── entity
+    ├── dto
+    ├── event
+    ├── consumer
+    └── config
+```
+
+## API Overview
+
+### Orders
+
+```http
+POST /api/orders
+GET /api/orders
+GET /api/orders/{orderId}
+PATCH /api/orders/{orderId}/status
+POST /api/orders/{orderId}/cancel
+```
+
+### Payments
+
+```http
+POST /api/payments
+GET /api/payments/{paymentId}
+GET /api/payments/order/{orderId}
+PATCH /api/payments/{paymentId}/status
+```
+
+### Notifications
+
+```http
+POST /api/notifications
+GET /api/notifications
+GET /api/notifications/{notificationId}
+POST /api/notifications/{notificationId}/markAsRead
+POST /api/notifications/markAllAsRead
+
+
+## Docker Services
+
+Docker Compose starts the following containers:
+
+```text
+order-service
+payment-service
+notification-service
+order-db
+payment-db
+notification-db
+rabbitmq
+```
+
+## Local Ports
+
+```text
+order-service:        http://localhost:8081
+payment-service:      http://localhost:8082
+notification-service: http://localhost:8083
+RabbitMQ UI:          http://localhost:15672
+```
+
+RabbitMQ default login:
+
+```text
+username: guest
+password: guest
+```
+
+## Sample Order Request
+
+```http
+POST /api/orders
+```
+
+```json
+{
+  "customerName": "Martin",
+  "customerEmail": "martin@test.com",
+  "customerPhone": "1234567890",
+  "items": [
+    {
+      "productName": "Burger",
+      "quantity": 2,
+      "price": 10.50
+    },
+    {
+      "productName": "Fries",
+      "quantity": 1,
+      "price": 4.99
+    }
+  ]
+}
+```
+
+## Current Version
+
+This is V1 of the Order Processing Microservices project, focused on learning core microservice patterns including service separation, independent databases, REST APIs, RabbitMQ messaging, event-driven workflows, and Docker Compose orchestration.
+
+## Author
+
+Built by Collins Lekeaka.
