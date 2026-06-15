@@ -1,67 +1,180 @@
-# Order Processing Microservices V1
+# Order Processing Microservices V2
 
-Order Processing Microservices V1 is an event-driven backend system built with Java and Spring Boot. It handles order creation, payment processing, order status updates, and customer notifications using separate microservices.
+Order Processing Microservices V2 is an event-driven backend system built with Java and Spring Boot. It supports user registration and authentication, order creation, payment processing, order status updates, and customer notifications across independently deployed microservices.
 
-The project uses RabbitMQ messaging for asynchronous service communication and Docker Compose to run all services, databases, and the message broker locally.
+The system uses RabbitMQ for asynchronous event communication, Spring Cloud Gateway as the main API entry point, Eureka for service discovery, Spring Cloud Config for centralized configuration, and Docker Compose to run the complete system locally.
 
 ## Tech Stack
 
-- Java 21
-- Spring Boot
-- Spring Data JPA
-- MySQL
-- RabbitMQ
-- Docker Compose
-- Maven
-- REST APIs
+* Java 21
+* Spring Boot
+* Spring Security
+* Spring Cloud Gateway
+* Spring Cloud Config
+* Netflix Eureka
+* Spring Data JPA
+* MySQL
+* RabbitMQ
+* JWT authentication
+* Docker Compose
+* Maven
+* REST APIs
 
 ## Services
 
-- order-service
-- payment-service
-- notification-service
+* api-gateway
+* spring-cloud-config-server
+* naming-server
+* user-service
+* order-service
+* payment-service
+* notification-service
 
 ## Features
 
-- Order creation and order lookup
-- Payment processing with randomized SUCCESS or FAILED outcomes
-- Order status updates based on payment result
-- Custom notification generation based on payment success or failure
-- RabbitMQ messaging for event-driven communication
-- Separate MySQL database per service
-- Shared RabbitMQ message broker
-- Docker Compose setup for running the full system locally
-- RESTful API structure using controllers, services, repositories, DTOs, and entities
+* User registration and login
+* JWT generation and validation
+* Central API Gateway routing
+* Protected API endpoints
+* Eureka service discovery
+* Centralized service configuration
+* Order creation and lookup
+* Payment processing with randomized `SUCCESS` or `FAILED` outcomes
+* Automatic order status updates based on payment results
+* Customer notifications for order creation and payment results
+* RabbitMQ-based asynchronous communication
+* Separate MySQL database for each business service
+* Docker Compose setup for the complete system
+* RESTful architecture using controllers, services, repositories, DTOs, entities, filters, publishers, and consumers
 
-## Event-Driven Flow
+## Architecture
 
-The system uses RabbitMQ events to coordinate communication between services.
+```text
+Client
+  |
+  v
+API Gateway
+  |
+  +--> user-service
+  |
+  +--> order-service
+  |
+  +--> payment-service
+  |
+  +--> notification-service
+
+All services:
+- Retrieve centralized configuration from Config Server
+- Register with Eureka Naming Server
+- Communicate asynchronously through RabbitMQ
+- Use independent MySQL databases
+```
+
+## Authentication Flow
+
+```text
+User Registration
+→ user-service creates the user
+→ password is securely encoded
+→ user is stored in user-db
+
+User Login
+→ user-service validates the credentials
+→ JWT is generated
+→ client sends JWT in the Authorization header
+
+Protected Request
+→ API Gateway validates the JWT
+→ request is routed to the target service
+→ downstream service validates authentication
+→ request is processed
+```
+
+Authorization header format:
+
+```http
+Authorization: Bearer <JWT_TOKEN>
+```
+
+## Event-Driven Order Flow
+
+The system uses RabbitMQ events to coordinate communication between the order, payment, and notification services.
 
 ```text
 Create Order
-→ OrderCreatedEvent published
+→ order-service saves the order with PENDING status
+→ OrderCreatedEvent is published
+
+OrderCreatedEvent
 → payment-service consumes the event
-→ payment-service creates payment with SUCCESS or FAILED status
-→ PaymentCompletedEvent published
-→ order-service consumes payment event
-→ order status updates to CONFIRMED or PAYMENT_FAILED
-→ notification-service consumes payment event
-→ custom notification is created
+→ payment-service creates a payment
+→ payment result is randomly SUCCESS or FAILED
+→ PaymentCompletedEvent is published
+
+PaymentCompletedEvent
+→ order-service consumes the event
+→ order status becomes CONFIRMED or PAYMENT_FAILED
+
+PaymentCompletedEvent
+→ notification-service consumes the event
+→ payment success or failure notification is created
+```
+
+The notification service also creates an initial notification when an order is received.
+
+## Verified End-to-End Flow
+
+The complete workflow was tested through the API Gateway:
+
+```text
+Register Customer
+→ Login
+→ Receive JWT
+→ Create Multiple Orders
+→ OrderCreatedEvent Published
+→ Payment Processed
+→ PaymentCompletedEvent Published
+→ Order Status Updated
+→ Customer Notifications Created
+```
+
+Tested order results included:
+
+```text
+Payment SUCCESS → Order CONFIRMED
+Payment FAILED  → Order PAYMENT_FAILED
 ```
 
 ## Project Highlight
 
-**Event-Driven Microservices | Java, Spring Boot, RabbitMQ, MySQL, Docker Compose**
+**Event-Driven Microservices | Java, Spring Boot, Spring Cloud, RabbitMQ, MySQL, Docker**
 
-- Built separate order, payment, and notification microservices with independent databases.
-- Implemented RabbitMQ messaging to trigger payment processing, update order statuses, and generate customized notifications.
-- Containerized the full system with Docker Compose using MySQL databases and a shared RabbitMQ broker.
+* Built user, order, payment, and notification microservices with independent responsibilities and databases.
+* Implemented JWT authentication and validation through Spring Security and Spring Cloud Gateway.
+* Added Eureka service discovery and centralized configuration using Spring Cloud Config.
+* Implemented RabbitMQ events to process payments, update order statuses, and generate notifications asynchronously.
+* Containerized the complete infrastructure and application stack using Docker Compose.
+* Tested the complete workflow through the API Gateway, including successful and failed payment scenarios.
 
 ## Project Structure
 
 ```text
 microservice-app
 ├── docker-compose.yml
+├── api-gateway
+│   ├── config
+│   ├── filter
+│   └── constants
+├── spring-cloud-config-server
+├── naming-server
+├── user-service
+│   ├── controller
+│   ├── service
+│   ├── repository
+│   ├── entity
+│   ├── dto
+│   ├── filter
+│   └── config
 ├── order-service
 │   ├── controller
 │   ├── service
@@ -93,24 +206,49 @@ microservice-app
     └── config
 ```
 
+## API Gateway
+
+All client requests should be sent through:
+
+```text
+http://localhost:8765
+```
+
+The API Gateway routes requests to services registered with Eureka.
+
+```text
+/api/users/**          → user-service
+/api/orders/**         → order-service
+/api/payments/**       → payment-service
+/api/notifications/**  → notification-service
+```
+
 ## API Overview
+
+### Users
+
+```http
+POST /api/users/register
+POST /api/users/login
+GET  /api/users/getUser
+```
 
 ### Orders
 
 ```http
-POST /api/orders
-GET /api/orders
-GET /api/orders/{orderId}
+POST  /api/orders
+GET   /api/orders
+GET   /api/orders/{orderId}
 PATCH /api/orders/{orderId}/status
-POST /api/orders/{orderId}/cancel
+POST  /api/orders/{orderId}/cancel
 ```
 
 ### Payments
 
 ```http
-POST /api/payments
-GET /api/payments/{paymentId}
-GET /api/payments/order/{orderId}
+POST  /api/payments
+GET   /api/payments/{paymentId}
+GET   /api/payments/order/{orderId}
 PATCH /api/payments/{paymentId}/status
 ```
 
@@ -118,20 +256,25 @@ PATCH /api/payments/{paymentId}/status
 
 ```http
 POST /api/notifications
-GET /api/notifications
-GET /api/notifications/{notificationId}
+GET  /api/notifications
+GET  /api/notifications/{notificationId}
 POST /api/notifications/{notificationId}/markAsRead
 POST /api/notifications/markAllAsRead
-
+```
 
 ## Docker Services
 
 Docker Compose starts the following containers:
 
 ```text
+api-gateway
+spring-cloud-config-server
+naming-server
+user-service
 order-service
 payment-service
 notification-service
+user-db
 order-db
 payment-db
 notification-db
@@ -141,9 +284,21 @@ rabbitmq
 ## Local Ports
 
 ```text
+API Gateway:          http://localhost:8765
+Eureka Dashboard:     http://localhost:8761
+Config Server:        http://localhost:8888
+
+user-service:         http://localhost:8084
 order-service:        http://localhost:8081
 payment-service:      http://localhost:8082
 notification-service: http://localhost:8083
+
+user-db:              localhost:3311
+order-db:             localhost:3308
+payment-db:           localhost:3309
+notification-db:      localhost:3310
+
+RabbitMQ Broker:      localhost:5672
 RabbitMQ UI:          http://localhost:15672
 ```
 
@@ -154,35 +309,149 @@ username: guest
 password: guest
 ```
 
-## Sample Order Request
+## Running the Project
+
+From the root directory, build and start the complete application:
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+Verify that all containers are running:
+
+```bash
+docker compose ps
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+Stop the application:
+
+```bash
+docker compose down
+```
+
+## Sample User Registration
 
 ```http
-POST /api/orders
+POST http://localhost:8765/api/users/register
+Content-Type: application/json
 ```
 
 ```json
 {
-  "customerName": "Martin",
-  "customerEmail": "martin@test.com",
-  "customerPhone": "1234567890",
+  "name": "Maggie Lorena",
+  "email": "MaggieLorena@example.com",
+  "password": "Password123!",
+  "role": "CUSTOMER"
+}
+```
+
+## Sample Login Request
+
+```http
+POST http://localhost:8765/api/users/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "MaggieLorena@example.com",
+  "password": "Password123!"
+}
+```
+
+The login endpoint returns a JWT that must be included when calling protected endpoints.
+
+## Sample Order Request
+
+```http
+POST http://localhost:8765/api/orders
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+```
+
+```json
+{
+  "customerName": "Maggie Lorena",
+  "customerEmail": "MaggieLorena@example.com",
+  "customerPhone": "6145551001",
   "items": [
     {
-      "productName": "Burger",
-      "quantity": 2,
-      "price": 10.50
+      "productName": "Laptop Stand",
+      "quantity": 1,
+      "price": 59.99
     },
     {
-      "productName": "Fries",
+      "productName": "Wireless Keyboard",
       "quantity": 1,
-      "price": 4.99
+      "price": 79.99
     }
   ]
 }
 ```
 
+Example initial order response:
+
+```json
+{
+  "id": 3,
+  "customerName": "Maggie Lorena",
+  "customerEmail": "MaggieLorena@example.com",
+  "customerPhone": "6145551001",
+  "total": 139.98,
+  "status": "PENDING"
+}
+```
+
+After payment processing, the final order status becomes:
+
+```text
+CONFIRMED
+```
+
+or:
+
+```text
+PAYMENT_FAILED
+```
+
 ## Current Version
 
-This is V1 of the Order Processing Microservices project, focused on learning core microservice patterns including service separation, independent databases, REST APIs, RabbitMQ messaging, event-driven workflows, and Docker Compose orchestration.
+This is V2 of the Order Processing Microservices project.
+
+V2 expands the original event-driven application by adding:
+
+* User management
+* JWT authentication
+* API Gateway routing
+* Eureka service discovery
+* Spring Cloud Config
+* Centralized application entry point
+* Authenticated requests across services
+* Complete Docker Compose orchestration
+
+The core V2 system has been implemented and tested successfully from user registration through order creation, payment processing, order status updates, and notification generation.
+
+## Future Improvements
+
+* Automated unit and integration tests
+* Refresh tokens and logout
+* Role-based authorization
+* RabbitMQ retries and dead-letter queues
+* Event idempotency
+* Distributed tracing
+* Centralized logging
+* Monitoring and metrics
+* Docker health checks
+* OpenAPI documentation
+* Cloud deployment
+* Real payment provider integration
 
 ## Author
 
