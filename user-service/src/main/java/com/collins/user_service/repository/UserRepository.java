@@ -3,8 +3,10 @@ package com.collins.user_service.repository;
 import com.collins.user_service.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface UserRepository extends JpaRepository<Long, User> {
+import java.util.Optional;
+
+public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
-    boolean existByEmail(String email);
+    Optional<User> findByEmail(String email);
 }

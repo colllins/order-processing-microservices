@@ -19,6 +19,7 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private Long orderId;
+    private Long userId;
     private String customerEmail;
     private String title;
     private String message;

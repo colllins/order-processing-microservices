@@ -20,6 +20,7 @@ public class Order {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    private Long userId;
     private String customerName;
     private String customerEmail;
     private String customerPhone;

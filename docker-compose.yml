@@ -1,79 +1,215 @@
 services:
+
+  # =========================================================
+  # RabbitMQ
+  # =========================================================
+
   rabbitmq:
     image: rabbitmq:4.3.0-management
     container_name: rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
+    restart: unless-stopped
+
+  # =========================================================
+  # MySQL Databases
+  # =========================================================
 
   order-db:
     image: mysql:9.6
     container_name: order-db
     environment:
-      MYSQL_ROOT_PASSWORD: Thisismanmad1@
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: order_service_db
     ports:
       - "3308:3306"
+    volumes:
+      - order-db-data:/var/lib/mysql
+    restart: unless-stopped
 
   payment-db:
     image: mysql:9.6
     container_name: payment-db
     environment:
-      MYSQL_ROOT_PASSWORD: Thisismanmad1@
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: payment_service_db
     ports:
       - "3309:3306"
+    volumes:
+      - payment-db-data:/var/lib/mysql
+    restart: unless-stopped
 
   notification-db:
     image: mysql:9.6
     container_name: notification-db
     environment:
-      MYSQL_ROOT_PASSWORD: Thisismanmad1@
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: notification_service_db
     ports:
       - "3310:3306"
+    volumes:
+      - notification-db-data:/var/lib/mysql
+    restart: unless-stopped
+
+  user-db:
+    image: mysql:9.6
+    container_name: user-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: user_service_db
+    ports:
+      - "3311:3306"
+    volumes:
+      - user-db-data:/var/lib/mysql
+    restart: unless-stopped
+
+  # =========================================================
+  # Spring Cloud Infrastructure
+  # =========================================================
+
+  spring-cloud-config-server:
+    build:
+      context: ./spring-cloud-config-server
+    container_name: spring-cloud-config-server
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./git-localconfig-repo:/config-repo
+    environment:
+      SPRING_CLOUD_CONFIG_SERVER_GIT_URI: file:///config-repo
+      SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL: master
+    restart: unless-stopped
+
+  naming-server:
+    build:
+      context: ./naming-server
+    container_name: naming-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      - spring-cloud-config-server
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://spring-cloud-config-server:8888
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8765:8765"
+    depends_on:
+      - spring-cloud-config-server
+      - naming-server
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://spring-cloud-config-server:8888
+      SERVER_PORT: 8765
+      SPRING_APPLICATION_JSON: >
+        {
+          "eureka": {
+            "client": {
+              "serviceUrl": {
+                "defaultZone": "http://naming-server:8761/eureka"
+              }
+            }
+          }
+        }
+      JWT_SECRET: ${JWT_SECRET}
+    restart: unless-stopped
+
+  # =========================================================
+  # Business Services
+  # =========================================================
 
   order-service:
-    build: ./order-service
+    build:
+      context: ./order-service
     container_name: order-service
     ports:
       - "8081:8081"
     depends_on:
+      - spring-cloud-config-server
+      - naming-server
       - order-db
       - rabbitmq
     environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://spring-cloud-config-server:8888
       SPRING_DATASOURCE_URL: jdbc:mysql://order-db:3306/order_service_db
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: Thisismanmad1@
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://naming-server:8761/eureka
+    restart: unless-stopped
 
   payment-service:
-    build: ./payment-service
+    build:
+      context: ./payment-service
     container_name: payment-service
     ports:
       - "8082:8082"
     depends_on:
+      - spring-cloud-config-server
+      - naming-server
       - payment-db
       - rabbitmq
     environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://spring-cloud-config-server:8888
       SPRING_DATASOURCE_URL: jdbc:mysql://payment-db:3306/payment_service_db
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: Thisismanmad1@
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://naming-server:8761/eureka
+    restart: unless-stopped
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: ./notification-service
     container_name: notification-service
     ports:
       - "8083:8083"
     depends_on:
+      - spring-cloud-config-server
+      - naming-server
       - notification-db
       - rabbitmq
     environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://spring-cloud-config-server:8888
       SPRING_DATASOURCE_URL: jdbc:mysql://notification-db:3306/notification_service_db
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: Thisismanmad1@
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://naming-server:8761/eureka
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ./user-service
+    container_name: user-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      - spring-cloud-config-server
+      - naming-server
+      - user-db
+    environment:
+      SPRING_CONFIG_IMPORT: optional:configserver:http://spring-cloud-config-server:8888
+      SPRING_DATASOURCE_URL: jdbc:mysql://user-db:3306/user_service_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://naming-server:8761/eureka
+      JWT_SECRET: ${JWT_SECRET}
+    restart: unless-stopped
+
+# =========================================================
+# Persistent Database Volumes
+# =========================================================
+
+volumes:
+  order-db-data:
+  payment-db-data:
+  notification-db-data:
+  user-db-data:
