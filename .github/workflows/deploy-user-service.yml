@@ -1,6 +1,8 @@
 name: Deploy User Service
 
 on:
+  workflow_dispatch:
+
   push:
     branches:
       - main
