@@ -2,6 +2,7 @@ package com.collins.notification_service.consumer;
 
 import com.collins.notification_service.dto.CreateNotificationRequestDto;
 import com.collins.notification_service.event.OrderCreatedEvent;
+import com.collins.notification_service.service.EmailService;
 import com.collins.notification_service.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ public class OrderCreatedEventConsumer {
 
     private Logger LOGGER = LoggerFactory.getLogger(OrderCreatedEventConsumer.class);
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
     @RabbitListener(queues = "${notification.order.created.queue.name}")
     public void consumeMessage(OrderCreatedEvent orderCreatedEvent){
@@ -29,6 +31,11 @@ public class OrderCreatedEventConsumer {
                 message
         );
         notificationService.createNotification(cnrd);
+
+        emailService.sendEmail(
+                orderCreatedEvent.getCustomerEmail(),
+                title,
+                message);
 
     }
 

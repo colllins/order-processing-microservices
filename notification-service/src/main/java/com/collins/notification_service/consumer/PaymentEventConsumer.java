@@ -2,6 +2,7 @@ package com.collins.notification_service.consumer;
 
 import com.collins.notification_service.dto.CreateNotificationRequestDto;
 import com.collins.notification_service.event.PaymentEvent;
+import com.collins.notification_service.service.EmailService;
 import com.collins.notification_service.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ public class PaymentEventConsumer {
 
     private Logger LOGGER = LoggerFactory.getLogger(PaymentEventConsumer.class);
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
 
     @RabbitListener(queues = "${notification.payment.completed.queue.name}")
@@ -29,6 +31,11 @@ public class PaymentEventConsumer {
                 message
         );
         notificationService.createNotification(cnrd);
+
+        emailService.sendEmail(
+                paymentEvent.getCustomerEmail(),
+                title,
+                message);
     }
 
 }
