@@ -1,385 +1,201 @@
-# Order Processing Microservices V2
+#Order Processing Microservices
 
-Order Processing Microservices V2 is an event-driven backend system built with Java and Spring Boot. It supports user registration and authentication, order creation, payment processing, order status updates, and customer notifications across independently deployed microservices.
+An event-driven order processing backend built with Java 21, Spring Boot, Spring Cloud, RabbitMQ, and MySQL, deployed to AWS ECS Fargate with automated GitHub Actions CI/CD.
+The application supports customer registration and JWT authentication, order creation, simulated payment processing, automatic order status updates, persistent notifications, and transactional emails delivered through Amazon SES.
+Project status: Deployed to AWS and tested end to end, including real email delivery for order creation and payment outcomes. Payment results are simulated; no real money is charged.
 
-The system uses RabbitMQ for asynchronous event communication, Spring Cloud Gateway as the main API entry point, Eureka for service discovery, Spring Cloud Config for centralized configuration, and Docker Compose to run the complete system locally.
+Tech Stack
+Area	Technologies
+Language & framework	Java 21, Spring Boot, Maven
+Security	Spring Security, JWT
+Microservices	Spring Cloud Gateway, Netflix Eureka, Spring Cloud Config
+Messaging	RabbitMQ
+Persistence	Spring Data JPA, MySQL
+Email	Spring Mail, Amazon Simple Email Service (SES) via SMTP
+Containers	Docker, Docker Compose
+AWS infrastructure	ECS Fargate, ECR, RDS MySQL, CloudWatch
+CI/CD	GitHub Actions, AWS IAM OIDC authentication
+API testing	Postman
 
-## Tech Stack
 
-* Java 21
-* Spring Boot
-* Spring Security
-* Spring Cloud Gateway
-* Spring Cloud Config
-* Netflix Eureka
-* Spring Data JPA
-* MySQL
-* RabbitMQ
-* JWT authentication
-* Docker Compose
-* Maven
-* REST APIs
+Services
+Service	Responsibility	Local port
+api-gateway	Client entry point, JWT filtering, and request routing	8765
+user-service	Registration, login, and user management	8084
+order-service	Order creation, retrieval, and status changes	8081
+payment-service	Simulated payment processing and payment events	8082
+notification-service	Persisted notifications and customer emails	8083
+naming-server	Eureka service discovery	8761
+spring-cloud-config-server	Centralized configuration	8888
 
-## Services
 
-* api-gateway
-* spring-cloud-config-server
-* naming-server
-* user-service
-* order-service
-* payment-service
-* notification-service
+Each business service has its own logical MySQL database. RabbitMQ handles asynchronous communication between services.
+Architecture
+```mermaid
+flowchart TD
+    Client[Client / Postman] --> Gateway[Spring Cloud API Gateway]
+    Gateway --> Users[User Service]
+    Gateway --> Orders[Order Service]
+    Gateway --> Payments[Payment Service]
+    Gateway --> Notifications[Notification Service]
 
-## Features
+    Orders -->|OrderCreatedEvent| MQ[(RabbitMQ)]
+    MQ -->|OrderCreatedEvent| Payments
+    MQ -->|OrderCreatedEvent| Notifications
+    Payments -->|PaymentCompletedEvent| MQ
+    MQ -->|PaymentCompletedEvent| Orders
+    MQ -->|PaymentCompletedEvent| Notifications
 
-* User registration and login
-* JWT generation and validation
-* Central API Gateway routing
-* Protected API endpoints
-* Eureka service discovery
-* Centralized service configuration
-* Order creation and lookup
-* Payment processing with randomized `SUCCESS` or `FAILED` outcomes
-* Automatic order status updates based on payment results
-* Customer notifications for order creation and payment results
-* RabbitMQ-based asynchronous communication
-* Separate MySQL database for each business service
-* Docker Compose setup for the complete system
-* RESTful architecture using controllers, services, repositories, DTOs, entities, filters, publishers, and consumers
+    Users --> UDB[(User DB)]
+    Orders --> ODB[(Order DB)]
+    Payments --> PDB[(Payment DB)]
+    Notifications --> NDB[(Notification DB)]
+    Notifications --> SES[Amazon SES / SMTP]
+    SES --> Inbox[Customer Email Inbox]
 
-## Architecture
-
-```text
-Client
-  |
-  v
-API Gateway
-  |
-  +--> user-service
-  |
-  +--> order-service
-  |
-  +--> payment-service
-  |
-  +--> notification-service
-
-All services:
-- Retrieve centralized configuration from Config Server
-- Register with Eureka Naming Server
-- Communicate asynchronously through RabbitMQ
-- Use independent MySQL databases
+    Config[Spring Cloud Config] -.-> Gateway
+    Config -.-> Users
+    Config -.-> Orders
+    Config -.-> Payments
+    Config -.-> Notifications
+    Eureka[Eureka Discovery] -.-> Gateway
+    Eureka -.-> Users
+    Eureka -.-> Orders
+    Eureka -.-> Payments
+    Eureka -.-> Notifications
 ```
+The diagram represents application-level interactions. In AWS, application containers run on ECS Fargate; Docker images are stored in ECR, MySQL is hosted on RDS, and application logs are available in CloudWatch.
+Key Features
+- User registration and login with JWT-based authentication.
+- Central API Gateway routing and protected endpoints.
+- Eureka service discovery and centralized configuration.
+- Order creation, lookup, and automatic status updates.
+- Event-driven simulated payment processing with SUCCESS or FAILED results.
+- Persistent order and payment notifications.
+- Transactional customer emails for order receipt and payment results.
+- Independent databases for business services.
+- Local multi-container orchestration with Docker Compose.
+- AWS ECS Fargate deployments and automated service-specific GitHub Actions workflows.
+- CloudWatch logs for troubleshooting application and email delivery failures.
+Authentication Flow
+Register user → user-service hashes password and stores user
+Login → user-service validates credentials and issues JWT
+Authenticated API call → client sends Authorization: Bearer <JWT_TOKEN>
+API Gateway validates JWT → routes request to the target service
+Event-Driven Order Processing
+1. Client creates an order through the API Gateway.
+2. order-service stores the order with status PENDING.
+3. order-service publishes OrderCreatedEvent to RabbitMQ.
+4. payment-service consumes the event and simulates a payment result.
+5. notification-service consumes the order event, saves a notification,
+   and sends an "Order Received" email through Amazon SES.
+6. payment-service publishes PaymentCompletedEvent.
+7. order-service consumes the payment event and updates the order:
+      SUCCESS → CONFIRMED
+      FAILED  → PAYMENT_FAILED
+8. notification-service consumes the payment event, saves a notification,
+   and sends a payment-result email through Amazon SES.
+Important: Payment outcomes are randomly simulated for demonstration. The application does not integrate with a real payment provider.
+AWS Deployment
+The application has been deployed in AWS us-east-1 (N. Virginia).
+AWS service	Purpose
+Amazon ECS Fargate	Runs containerized Spring Boot services without managing EC2 hosts
+Amazon ECR	Stores versioned application Docker images
+Amazon RDS for MySQL	Hosts relational application data
+Amazon SES	Sends transactional emails from the verified collins-dev.com domain
+Amazon CloudWatch Logs	Collects service logs and email failure diagnostics
+AWS IAM / OIDC	Allows GitHub Actions to authenticate to AWS without long-lived AWS access keys in workflows
 
-## Authentication Flow
 
-```text
-User Registration
-→ user-service creates the user
-→ password is securely encoded
-→ user is stored in user-db
+Cloud Deployment Workflow
+Push changes to main
+        ↓
+GitHub Actions (service-specific workflow)
+        ↓
+Build Java application and Docker image
+        ↓
+Push image to Amazon ECR
+        ↓
+Update ECS service and start new deployment
+        ↓
+Wait for ECS service to stabilize
+        ↓
+Inspect logs and test API endpoints
+Five service-specific deployment workflows are configured under .github/workflows/:
+- deploy-user-service.yml
+- deploy-order-service.yml
+- deploy-payment-service.yml
+- deploy-notification-service.yml
+- deploy-api-gateway.yml
+These workflows support manual dispatch and path-filtered pushes to main, allowing application changes to deploy their corresponding services.
+Deployment note: The gateway has been tested using an ECS task's public IP and port 8765. ECS task public IPs can change after redeployments, so any previously observed IP should not be treated as a permanent application URL. A stable HTTPS endpoint behind a load balancer and custom domain is a future improvement.
+Amazon SES Sending Restrictions
+The collins-dev.com sender domain is verified in Amazon SES. The AWS SES account was still in sandbox mode during testing, so recipients also needed to be verified in the same AWS region. Production access must be approved by AWS before sending to arbitrary unverified recipients.
+Verified End-to-End Tests
+The deployed system was tested through the API Gateway using Postman:
+1. Registered a user and logged in to obtain a JWT.
+2. Created authenticated orders through /api/orders.
+3. Confirmed that RabbitMQ events triggered payment processing.
+4. Verified order status transitions for both simulated payment outcomes.
+5. Retrieved persisted notifications through /api/notifications.
+6. Confirmed that real emails reached a verified Gmail inbox from notification@collins-dev.com.
+Verified Email Example
+For order #3, the inbox received:
+Email subject	Observed result
+Order Received	Order #3 received, initial status PENDING
+Payment FAILED	Order #3 payment outcome reported as FAILED
 
-User Login
-→ user-service validates the credentials
-→ JWT is generated
-→ client sends JWT in the Authorization header
 
-Protected Request
-→ API Gateway validates the JWT
-→ request is routed to the target service
-→ downstream service validates authentication
-→ request is processed
-```
-
-Authorization header format:
-
-```http
-Authorization: Bearer <JWT_TOKEN>
-```
-
-## Event-Driven Order Flow
-
-The system uses RabbitMQ events to coordinate communication between the order, payment, and notification services.
-
-```text
-Create Order
-→ order-service saves the order with PENDING status
-→ OrderCreatedEvent is published
-
-OrderCreatedEvent
-→ payment-service consumes the event
-→ payment-service creates a payment
-→ payment result is randomly SUCCESS or FAILED
-→ PaymentCompletedEvent is published
-
-PaymentCompletedEvent
-→ order-service consumes the event
-→ order status becomes CONFIRMED or PAYMENT_FAILED
-
-PaymentCompletedEvent
-→ notification-service consumes the event
-→ payment success or failure notification is created
-```
-
-The notification service also creates an initial notification when an order is received.
-
-## Verified End-to-End Flow
-
-The complete workflow was tested through the API Gateway:
-
-```text
-Register Customer
-→ Login
-→ Receive JWT
-→ Create Multiple Orders
-→ OrderCreatedEvent Published
-→ Payment Processed
-→ PaymentCompletedEvent Published
-→ Order Status Updated
-→ Customer Notifications Created
-```
-
-Tested order results included:
-
-```text
-Payment SUCCESS → Order CONFIRMED
-Payment FAILED  → Order PAYMENT_FAILED
-```
-
-## Project Highlight
-
-**Event-Driven Microservices | Java, Spring Boot, Spring Cloud, RabbitMQ, MySQL, Docker**
-
-* Built user, order, payment, and notification microservices with independent responsibilities and databases.
-* Implemented JWT authentication and validation through Spring Security and Spring Cloud Gateway.
-* Added Eureka service discovery and centralized configuration using Spring Cloud Config.
-* Implemented RabbitMQ events to process payments, update order statuses, and generate notifications asynchronously.
-* Containerized the complete infrastructure and application stack using Docker Compose.
-* Tested the complete workflow through the API Gateway, including successful and failed payment scenarios.
-
-## Project Structure
-
-```text
-microservice-app
-├── docker-compose.yml
-├── api-gateway
-│   ├── config
-│   ├── filter
-│   └── constants
-├── spring-cloud-config-server
-├── naming-server
-├── user-service
-│   ├── controller
-│   ├── service
-│   ├── repository
-│   ├── entity
-│   ├── dto
-│   ├── filter
-│   └── config
-├── order-service
-│   ├── controller
-│   ├── service
-│   ├── repository
-│   ├── entity
-│   ├── dto
-│   ├── event
-│   ├── publisher
-│   ├── consumer
-│   └── config
-├── payment-service
-│   ├── controller
-│   ├── service
-│   ├── repository
-│   ├── entity
-│   ├── dto
-│   ├── event
-│   ├── publisher
-│   ├── consumer
-│   └── config
-└── notification-service
-    ├── controller
-    ├── service
-    ├── repository
-    ├── entity
-    ├── dto
-    ├── event
-    ├── consumer
-    └── config
-```
-
-## API Gateway
-
-All client requests should be sent through:
-
-```text
-http://localhost:8765
-```
-
-The API Gateway routes requests to services registered with Eureka.
-
-```text
-/api/users/**          → user-service
-/api/orders/**         → order-service
-/api/payments/**       → payment-service
-/api/notifications/**  → notification-service
-```
-
-## API Overview
-
-### Users
-
-```http
+This verifies the email delivery path for an order-received event and a failed-payment event. Payment-success notifications were also generated by the application during earlier testing, but a successful-payment email delivery is not separately claimed here.
+During testing, CloudWatch also helped identify an SES sandbox rejection for an unverified recipient. Using a verified recipient resolved the issue without changing application code.
+API Overview
+All requests should go through the API Gateway.
+Local base URL: http://localhost:8765
+Users
 POST /api/users/register
 POST /api/users/login
 GET  /api/users/getUser
-```
-
-### Orders
-
-```http
+Orders
 POST  /api/orders
 GET   /api/orders
 GET   /api/orders/{orderId}
 PATCH /api/orders/{orderId}/status
 POST  /api/orders/{orderId}/cancel
-```
-
-### Payments
-
-```http
+Payments
 POST  /api/payments
 GET   /api/payments/{paymentId}
 GET   /api/payments/order/{orderId}
 PATCH /api/payments/{paymentId}/status
-```
-
-### Notifications
-
-```http
+Notifications
 POST /api/notifications
 GET  /api/notifications
 GET  /api/notifications/{notificationId}
-POST /api/notifications/{notificationId}/markAsRead
-POST /api/notifications/markAllAsRead
-```
-
-## Docker Services
-
-Docker Compose starts the following containers:
-
-```text
-api-gateway
-spring-cloud-config-server
-naming-server
-user-service
-order-service
-payment-service
-notification-service
-user-db
-order-db
-payment-db
-notification-db
-rabbitmq
-```
-
-## Local Ports
-
-```text
-API Gateway:          http://localhost:8765
-Eureka Dashboard:     http://localhost:8761
-Config Server:        http://localhost:8888
-
-user-service:         http://localhost:8084
-order-service:        http://localhost:8081
-payment-service:      http://localhost:8082
-notification-service: http://localhost:8083
-
-user-db:              localhost:3311
-order-db:             localhost:3308
-payment-db:           localhost:3309
-notification-db:      localhost:3310
-
-RabbitMQ Broker:      localhost:5672
-RabbitMQ UI:          http://localhost:15672
-```
-
-RabbitMQ default login:
-
-```text
-username: guest
-password: guest
-```
-
-## Running the Project
-
-From the root directory, build and start the complete application:
-
-```bash
-docker compose build --no-cache
-docker compose up -d
-```
-
-Verify that all containers are running:
-
-```bash
-docker compose ps
-```
-
-View logs:
-
-```bash
-docker compose logs -f
-```
-
-Stop the application:
-
-```bash
-docker compose down
-```
-
-## Sample User Registration
-
-```http
+POST /api/notifications/{notificationId}/mark-as-read
+POST /api/notifications/mark-all-as-read
+Sample Registration
 POST http://localhost:8765/api/users/register
 Content-Type: application/json
-```
-
-```json
 {
-  "name": "Maggie Lorena",
-  "email": "MaggieLorena@example.com",
-  "password": "Password123!",
-  "role": "CUSTOMER"
-}
-```
-
-## Sample Login Request
-
-```http
-POST http://localhost:8765/api/users/login
-Content-Type: application/json
-```
-
-```json
-{
-  "email": "MaggieLorena@example.com",
+  "username": "maggie",
+  "email": "maggie@example.com",
   "password": "Password123!"
 }
-```
-
-The login endpoint returns a JWT that must be included when calling protected endpoints.
-
-## Sample Order Request
-
-```http
+Sample Login
+POST http://localhost:8765/api/users/login
+Content-Type: application/json
+{
+  "email": "maggie@example.com",
+  "password": "Password123!"
+}
+Use the returned JWT for protected endpoints:
+Authorization: Bearer <JWT_TOKEN>
+Sample Order Creation
 POST http://localhost:8765/api/orders
 Authorization: Bearer <JWT_TOKEN>
 Content-Type: application/json
-```
-
-```json
 {
   "customerName": "Maggie Lorena",
-  "customerEmail": "MaggieLorena@example.com",
+  "customerEmail": "maggie@example.com",
   "customerPhone": "6145551001",
   "items": [
     {
@@ -394,65 +210,83 @@ Content-Type: application/json
     }
   ]
 }
-```
+The order initially has status PENDING, then becomes CONFIRMED or PAYMENT_FAILED after asynchronous payment processing.
+Email testing: The customerEmail value in the order event determines the recipient of order and payment emails. Logging in with an email address does not automatically change this field. While SES is in sandbox mode, use a verified recipient address for testing.
 
-Example initial order response:
+Run Locally with Docker Compose
+Prerequisites
+- Docker and Docker Compose
+- Environment-specific configuration and credentials for databases, RabbitMQ, JWT, and email where required
+From the project root:
+docker compose build --no-cache
+docker compose up -d
+Check containers:
+docker compose ps
+View logs:
+docker compose logs -f
+Stop the stack:
+docker compose down
+Local Service Ports
+Component	Address / port
+API Gateway	http://localhost:8765
+Eureka dashboard	http://localhost:8761
+Config Server	http://localhost:8888
+User Service	http://localhost:8084
+Order Service	http://localhost:8081
+Payment Service	http://localhost:8082
+Notification Service	http://localhost:8083
+User MySQL	localhost:3311
+Order MySQL	localhost:3308
+Payment MySQL	localhost:3309
+Notification MySQL	localhost:3310
+RabbitMQ AMQP	localhost:5672
+RabbitMQ Management UI	http://localhost:15672
 
-```json
-{
-  "id": 3,
-  "customerName": "Maggie Lorena",
-  "customerEmail": "MaggieLorena@example.com",
-  "customerPhone": "6145551001",
-  "total": 139.98,
-  "status": "PENDING"
-}
-```
 
-After payment processing, the final order status becomes:
-
-```text
-CONFIRMED
-```
-
-or:
-
-```text
-PAYMENT_FAILED
-```
-
-## Current Version
-
-This is V2 of the Order Processing Microservices project.
-
-V2 expands the original event-driven application by adding:
-
-* User management
-* JWT authentication
-* API Gateway routing
-* Eureka service discovery
-* Spring Cloud Config
-* Centralized application entry point
-* Authenticated requests across services
-* Complete Docker Compose orchestration
-
-The core V2 system has been implemented and tested successfully from user registration through order creation, payment processing, order status updates, and notification generation.
-
-## Future Improvements
-
-* Automated unit and integration tests
-* Refresh tokens and logout
-* Role-based authorization
-* RabbitMQ retries and dead-letter queues
-* Event idempotency
-* Distributed tracing
-* Centralized logging
-* Monitoring and metrics
-* Docker health checks
-* OpenAPI documentation
-* Cloud deployment
-* Real payment provider integration
-
-## Author
-
+Actual host port mappings and credentials depend on the active docker-compose.yml and environment configuration. Never reuse development credentials in production.
+Project Structure
+microservice-app/
+├── .github/
+│   └── workflows/
+│       ├── deploy-user-service.yml
+│       ├── deploy-order-service.yml
+│       ├── deploy-payment-service.yml
+│       ├── deploy-notification-service.yml
+│       └── deploy-api-gateway.yml
+├── docker-compose.yml
+├── api-gateway/
+├── spring-cloud-config-server/
+├── naming-server/
+├── user-service/
+├── order-service/
+├── payment-service/
+└── notification-service/
+    └── src/main/java/com/collins/notification_service/
+        ├── consumer/
+        │   ├── OrderCreatedEventConsumer.java
+        │   └── PaymentEventConsumer.java
+        └── service/
+            └── EmailService.java
+The business services use Spring Boot's layered structure, including controllers, services, repositories, entities, DTOs, configuration, and RabbitMQ publishers/consumers where applicable.
+Engineering Highlights
+- Designed independently deployable microservices with distinct business responsibilities.
+- Secured API access with Spring Security and JWT-based authentication.
+- Implemented event-driven workflows using RabbitMQ to decouple order creation, payment processing, and notifications.
+- Used independent relational databases for service data ownership.
+- Built Docker-based local development and AWS ECS Fargate deployment workflows.
+- Automated image builds, ECR pushes, and ECS updates using GitHub Actions and OIDC.
+- Integrated AWS SES SMTP for transactional emails and diagnosed delivery failures using CloudWatch logs.
+- Verified the deployed workflow end to end, including actual customer email delivery.
+Future Improvements
+- Automated unit, integration, and end-to-end tests in CI.
+- Stable HTTPS API endpoint using a load balancer and custom domain.
+- Production-ready secret management and least-privilege access reviews.
+- RabbitMQ retries, dead-letter queues, and idempotent event consumers.
+- Reliable email retries and delivery/bounce monitoring.
+- Distributed tracing, metrics, and alerting.
+- OpenAPI/Swagger documentation.
+- Refresh tokens, logout, and fine-grained role-based authorization.
+- Real payment provider integration and secure payment retry workflows.
+- AWS SES production access for sending to unverified customer addresses.
+Author
 Built by Collins Lekeaka.
