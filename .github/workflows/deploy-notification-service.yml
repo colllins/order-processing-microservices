@@ -47,7 +47,7 @@ jobs:
         run: |
           aws ecs update-service \
             --cluster order-processing-cluster \
-            --service notification-service \
+            --service notification-service-3 \
             --force-new-deployment \
             --region us-east-1
 
@@ -55,5 +55,5 @@ jobs:
         run: |
           aws ecs wait services-stable \
             --cluster order-processing-cluster \
-            --services notification-service \
+            --services notification-service-3 \
             --region us-east-1
