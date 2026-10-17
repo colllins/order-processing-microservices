@@ -1,3 +1,4 @@
+
 name: Deploy User Service
 
 on:
@@ -48,4 +49,11 @@ jobs:
             --cluster order-processing-cluster \
             --service user-service \
             --force-new-deployment \
+            --region us-east-1
+
+      - name: Wait for ECS deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster order-processing-cluster \
+            --services user-service \
             --region us-east-1
