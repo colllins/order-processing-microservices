@@ -1,6 +1,9 @@
 package com.collins.orderservice.dto;
 
 import com.collins.orderservice.entity.OrderItem;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -15,15 +18,16 @@ import java.util.List;
 @Setter
 public class CreateOrderRequestDto {
 
-    @NotNull
+    @NotBlank
     private String customerName;
 
-    @NotNull
+    @NotBlank
+    @Email
     private String customerEmail;
 
     @NotNull
     private String customerPhone;
 
-    @NotNull
+    @NotEmpty
     private List<OrderItem> items;
 }
