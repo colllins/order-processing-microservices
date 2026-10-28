@@ -2,8 +2,7 @@
 
 An event-driven order processing backend built with Java 21, Spring Boot, Spring Cloud, RabbitMQ, and MySQL, deployed to AWS ECS Fargate with automated GitHub Actions CI/CD.
 The application supports customer registration and JWT authentication, order creation, simulated payment processing, automatic order status updates, persistent notifications, and transactional emails delivered through Amazon SES.
-Project status: Deployed to AWS and tested end to end, including real email delivery for order creation and payment outcomes. Payment results are simulated; no real money is charged.
-
+Project status: Complete for the current portfolio scope. Deployed to AWS ECS Fargate, with a successful GitHub Actions CI/CD deployment, 29 passing Order Service automated tests, and a verified Postman end-to-end order workflow. Payments are simulated; no real money is charged.
 Tech Stack
 Area	Technologies
 Language & framework	Java 21, Spring Boot, Maven
@@ -15,6 +14,7 @@ Email	Spring Mail, Amazon Simple Email Service (SES) via SMTP
 Containers	Docker, Docker Compose
 AWS infrastructure	ECS Fargate, ECR, RDS MySQL, CloudWatch
 CI/CD	GitHub Actions, AWS IAM OIDC authentication
+Automated testing	JUnit 5, Mockito, Spring MockMvc, Testcontainers (MySQL)
 API testing	Postman
 
 
@@ -77,6 +77,7 @@ Key Features
 - Local multi-container orchestration with Docker Compose.
 - AWS ECS Fargate deployments and automated service-specific GitHub Actions workflows.
 - CloudWatch logs for troubleshooting application and email delivery failures.
+- 29 automated Order Service tests covering service logic, REST controllers, MySQL repositories, and application context startup.
 Authentication Flow
 Register user → user-service hashes password and stores user
 Login → user-service validates credentials and issues JWT
@@ -95,7 +96,7 @@ Event-Driven Order Processing
       FAILED  → PAYMENT_FAILED
 8. notification-service consumes the payment event, saves a notification,
    and sends a payment-result email through Amazon SES.
-Important: Payment outcomes are randomly simulated for demonstration. The application does not integrate with a real payment provider.
+   Important: Payment outcomes are randomly simulated for demonstration. The application does not integrate with a real payment provider.
 AWS Deployment
 The application has been deployed in AWS us-east-1 (N. Virginia).
 AWS service	Purpose
@@ -112,6 +113,8 @@ Push changes to main
         ↓
 GitHub Actions (service-specific workflow)
         ↓
+Run Maven verification and automated tests (Order Service workflow)
+        ↓
 Build Java application and Docker image
         ↓
 Push image to Amazon ECR
@@ -127,18 +130,32 @@ Five service-specific deployment workflows are configured under .github/workflow
 - deploy-payment-service.yml
 - deploy-notification-service.yml
 - deploy-api-gateway.yml
-These workflows support manual dispatch and path-filtered pushes to main, allowing application changes to deploy their corresponding services.
-Deployment note: The gateway has been tested using an ECS task's public IP and port 8765. ECS task public IPs can change after redeployments, so any previously observed IP should not be treated as a permanent application URL. A stable HTTPS endpoint behind a load balancer and custom domain is a future improvement.
+  These workflows support manual dispatch and path-filtered pushes to main, allowing application changes to deploy their corresponding services.
+  Deployment note: The gateway has been tested using an ECS task's public IP and port 8765. ECS task public IPs can change after redeployments, so any previously observed IP should not be treated as a permanent application URL. A stable HTTPS endpoint behind a load balancer and custom domain is a future improvement.
 Amazon SES Sending Restrictions
 The collins-dev.com sender domain is verified in Amazon SES. The AWS SES account was still in sandbox mode during testing, so recipients also needed to be verified in the same AWS region. Production access must be approved by AWS before sending to arbitrary unverified recipients.
 Verified End-to-End Tests
-The deployed system was tested through the API Gateway using Postman:
-1. Registered a user and logged in to obtain a JWT.
-2. Created authenticated orders through /api/orders.
-3. Confirmed that RabbitMQ events triggered payment processing.
-4. Verified order status transitions for both simulated payment outcomes.
-5. Retrieved persisted notifications through /api/notifications.
-6. Confirmed that real emails reached a verified Gmail inbox from notification@collins-dev.com.
+The deployed system was exercised through Postman and the API Gateway. The latest verified order-processing run (October 28, 2026) confirmed:
+1. API Gateway health endpoint responded successfully on port 8765.
+2. GET orders through the gateway returned HTTP 200 OK.
+3. An order was created and processed through the asynchronous payment workflow.
+4. Payment Service persisted payment #4 for order #4, amount $159.99, with status SUCCESS, then published a payment event.
+5. Notification Service persisted notification records and logged successful email sends for the order workflow.
+6. Retrieving order #4 through the gateway returned HTTP 200 OK with final status CONFIRMED.
+This is a manual Postman end-to-end verification, not an automated end-to-end test suite. The notification logs show two successful email-send events; they do not by themselves establish exactly-once delivery.
+Automated Order Service Tests
+The Order Service Maven build passed 29 of 29 automated tests locally, and the corresponding GitHub Actions deployment workflow completed successfully.
+Test category	Tests	Tooling
+Service-layer unit tests	12	JUnit 5, Mockito
+Controller tests	11	Spring MockMvc
+Repository integration tests	5	Testcontainers MySQL
+Spring application context test	1	Spring Boot Test, Testcontainers MySQL
+Total	29	
+
+
+Run from the order-service directory with Java 21 and Docker available:
+./mvnw clean verify
+On Windows PowerShell, use ./mvnw.cmd clean verify instead.
 Verified Email Example
 For order #3, the inbox received:
 Email subject	Observed result
@@ -212,12 +229,11 @@ Content-Type: application/json
 }
 The order initially has status PENDING, then becomes CONFIRMED or PAYMENT_FAILED after asynchronous payment processing.
 Email testing: The customerEmail value in the order event determines the recipient of order and payment emails. Logging in with an email address does not automatically change this field. While SES is in sandbox mode, use a verified recipient address for testing.
-
 Run Locally with Docker Compose
 Prerequisites
 - Docker and Docker Compose
 - Environment-specific configuration and credentials for databases, RabbitMQ, JWT, and email where required
-From the project root:
+  From the project root:
 docker compose build --no-cache
 docker compose up -d
 Check containers:
@@ -278,7 +294,7 @@ Engineering Highlights
 - Integrated AWS SES SMTP for transactional emails and diagnosed delivery failures using CloudWatch logs.
 - Verified the deployed workflow end to end, including actual customer email delivery.
 Future Improvements
-- Automated unit, integration, and end-to-end tests in CI.
+- Extend automated tests to other services and add a dedicated cross-service end-to-end test in CI.
 - Stable HTTPS API endpoint using a load balancer and custom domain.
 - Production-ready secret management and least-privilege access reviews.
 - RabbitMQ retries, dead-letter queues, and idempotent event consumers.
